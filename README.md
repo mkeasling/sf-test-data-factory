@@ -1,5 +1,10 @@
 # Test Data Factory
 
+<a href="https://githubsfdeploy.herokuapp.com?owner=mkeasling&repo=sf-test-data-factory&ref=main">
+  <img alt="Deploy to Salesforce"
+       src="https://raw.githubusercontent.com/afawcett/githubsfdeploy/master/deploy.png">
+</a>
+
 ## Introduction
 
 The TestDataFactory is a common pattern in which a single class (or, in this case, group of classes) is used by most/all unit tests, to perform the creation of test data during unit test execution.  The reason for this is that it makes it much easier to maintain unit tests over time.  For example, let's imagine that you are NOT using a single TestDataFactory, but are, instead, creating all test data directly inside your unit tests.  If you have 30 unit tests that all create Accounts, then you'll have 30 places in code that look something like this:
