@@ -1,27 +1,19 @@
 @IsTest
 public with sharing class TDF_User extends TDF.Provider {
-    // This method must return a complete list of 
-    public override Set<String> getMethodKeys() {
-        return new Set<String>{ 
-            'assignPermsetToUser', 
-            'createUser' 
-        };
-    }
-
     public override SObject call(
         String methodKey,
         Map<String, Object> fieldVals,
         Boolean doDml
     ) {
         switch on methodKey {
-            when 'assignPermsetToUser' {
+            when 'assignPermsetToUser', 'assignUserPermset' {
                 return assignPermsetToUser(fieldVals, doDml);
             }
             when 'createUser' {
                 return createUser(fieldVals, doDml);
             }
         }
-        throw new TestDataException('Could not find appropriate method.');
+        throw new MissingMethodException('Could not find appropriate method.');
     }
 
     public static Map<String, Id> profilesByName {
@@ -52,6 +44,7 @@ public with sharing class TDF_User extends TDF.Provider {
 
     public User createUser(Map<String, Object> fieldVals, Boolean doDml) {
         Integer i = getNext('User');
+        fieldVals.put('i', i);
         String profileName = 'System Administrator';
         Id profileId;
         if (fieldVals != null) {

@@ -42,7 +42,37 @@ public with sharing class TDF {
                     continue;
                 if (key.equalsIgnoreCase('Profile'))
                     continue;
-                obj.put(key, fieldVals.get(key));
+                if (key.equalsIgnoreCase('i'))
+                    continue;
+                // give the ability to use placeholders, eg. 'Description {{i}}'
+                try {
+                    String sVal = (String) fieldVals.get(key);
+                    String sRes = '';
+                    List<String> pieces = sVal.split('(\\{\\{|\\}\\})');
+                    for (Integer i = 0; i < pieces.size(); i++) {
+                        if (Math.mod(i, 2) == 0) {
+                            sRes += pieces[i];
+                        } else {
+                            try {
+                                String v = String.valueOf(
+                                    fieldVals.get(pieces[i])
+                                );
+                                if (v != null) {
+                                    sRes += v;
+                                } else {
+                                    sRes += '{{' + pieces[i] + '}}';
+                                }
+                            } catch (TypeException e) {
+                            }
+                        }
+                    }
+                    obj.put(key, sRes);
+                } catch (Exception e) {
+                    try {
+                        obj.put(key, fieldVals.get(key));
+                    } catch (SObjectException se) {
+                    }
+                }
             }
         }
         return obj;
@@ -174,7 +204,6 @@ public with sharing class TDF {
                 continue;
             Provider p = (Provider) Type.forName(a.Name).newInstance();
             tdfProviders.add(p);
-            p.registerMethods();
         }
     }
 
@@ -204,10 +233,21 @@ public with sharing class TDF {
         Map<String, Object> fieldVals,
         Boolean doDml
     ) {
+        if (fieldVals == null)
+            fieldVals = new Map<String, Object>();
         Provider p = tdfProvidersByMethod.get(methodKey);
         if (p == null) {
+            for (Provider pro : tdfProviders) {
+                try {
+                    Sobject result = pro.call(methodKey, fieldVals, doDml);
+                    registerMethod(methodKey, pro);
+                    return result;
+                } catch (MissingMethodException e) {
+                    continue;
+                }
+            }
             throw new TestDataException(
-                'Could not find a provider for key ' + methodKey
+                'Could not find a provider for methodKey ' + methodKey
             );
         }
         return p.call(methodKey, fieldVals, doDml);
@@ -215,16 +255,17 @@ public with sharing class TDF {
 
     public static List<SObject> callMany(
         String methodKey,
-        List<Map<String, Object>> fieldVals,
+        List<Map<String, Object>> fieldValList,
         Boolean doDml
     ) {
-        Provider p = tdfProvidersByMethod.get(methodKey);
-        if (p == null) {
-            throw new TestDataException(
-                'Could not find a provider for key ' + methodKey
-            );
+        List<SObject> result = new List<SObject>();
+        for (Map<String, Object> fieldVals : fieldValList) {
+            result.add(call(methodKey, fieldVals, false));
         }
-        return p.callMany(methodKey, fieldVals, doDml);
+        if (doDml) {
+            insert result;
+        }
+        return result;
     }
 
     public static List<SObject> callMany(
@@ -233,28 +274,38 @@ public with sharing class TDF {
         Map<String, Object> fieldVals,
         Boolean doDml
     ) {
-        Provider p = tdfProvidersByMethod.get(methodKey);
-        if (p == null) {
-            throw new TestDataException(
-                'Could not find a provider for key ' + methodKey
-            );
+        List<Map<String, Object>> fieldValList = new List<Map<String, Object>>();
+        for (Integer i = 0; i < times; i++) {
+            if (fieldVals == null) {
+                fieldValList.add(null);
+                continue;
+            }
+            Map<String, Object> fvs = new Map<String, Object>();
+            for (String key : fieldVals.keySet()) {
+                Object ov = fieldVals.get(key);
+                List<Object> lv;
+                try {
+                    lv = (List<Object>) ov;
+                } catch (Exception e) {
+                }
+                if (lv != null) {
+                    if (lv.size() != times)
+                        throw new TestDataException(
+                            'The list of values for key ' +
+                            key +
+                            ' must match the size ' +
+                            times
+                        );
+                    ov = lv[i];
+                }
+                fvs.put(key, ov);
+            }
+            fieldValList.add(fvs);
         }
-        return p.callMany(methodKey, times, fieldVals, doDml);
+        return callMany(methodKey, fieldValList, doDml);
     }
 
     public abstract class Provider {
-        /**
-         * This method must return a Set<String> containing the unique keys
-         * for each method provided by this class.
-         */
-        public abstract Set<String> getMethodKeys();
-        // {
-        //     return new Set<String>{
-        //         'createObject1',
-        //         'createObject2'
-        //     };
-        // }
-
         /**
          * This method takes a key, a fieldVals object, and doDml param.
          * It is responsible for calling the appropriate method and passing along the variables.
@@ -274,69 +325,6 @@ public with sharing class TDF {
         //         }
         //     }
         // }
-
-        /**
-         * This method takes a key, a list of fieldVals object, and a doDml param.
-         * It is responsible for calling the appropriate method, once for each fieldVal in the list.
-         */
-        public virtual List<SObject> callMany(
-            String methodKey,
-            List<Map<String, Object>> fieldValList,
-            Boolean doDml
-        ) {
-            List<SObject> result = new List<SObject>();
-            for (Map<String, Object> fieldVals : fieldValList) {
-                result.add(call(methodKey, fieldVals, false));
-            }
-            if (doDml) {
-                insert result;
-            }
-            return result;
-        }
-
-        public virtual List<SObject> callMany(
-            String methodKey,
-            Integer times,
-            Map<String, Object> fieldVals,
-            Boolean doDml
-        ) {
-            List<Map<String, Object>> fieldValList = new List<Map<String, Object>>();
-            for (Integer i = 0; i < times; i++) {
-                if(fieldVals == null) {
-                    fieldValList.add(null);
-                    continue;
-                }
-                Map<String, Object> fvs = new Map<String, Object>();
-                for (String key : fieldVals.keySet()) {
-                    Object ov = fieldVals.get(key);
-                    List<Object> lv;
-                    try {
-                        lv = (List<Object>) ov;
-                    } catch (Exception e) {
-                        System.debug(e);
-                    }
-                    if (lv != null) {
-                        if (lv.size() != times)
-                            throw new TestDataException(
-                                'The list of values for key ' +
-                                key +
-                                ' must match the size ' +
-                                times
-                            );
-                        ov = lv[i];
-                    }
-                    fvs.put(key, ov);
-                }
-                fieldValList.add(fvs);
-            }
-            return callMany(methodKey, fieldValList, doDml);
-        }
-
-        public virtual void registerMethods() {
-            for (String key : getMethodKeys()) {
-                TDF.registerMethod(key, this);
-            }
-        }
 
         public virtual Map<String, Object> filterKeys(
             Map<String, Object> orig,
@@ -419,5 +407,7 @@ public with sharing class TDF {
     }
 
     public class TestDataException extends Exception {
+    }
+    public class MissingMethodException extends Exception {
     }
 }

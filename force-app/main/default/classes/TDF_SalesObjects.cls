@@ -1,9 +1,5 @@
 @IsTest
 public with sharing class TDF_SalesObjects extends TDF.Provider {
-    public override Set<String> getMethodKeys() {
-        return new Set<String>{ 'createAccount', 'createOpportunity' };
-    }
-
     public override sObject call(
         String methodKey,
         Map<String, Object> fieldVals,
@@ -17,11 +13,12 @@ public with sharing class TDF_SalesObjects extends TDF.Provider {
                 return createOpportunity(fieldVals, doDml);
             }
         }
-        throw new TestDataException('Invalid key ' + methodKey);
+        throw new MissingMethodException('Invalid key ' + methodKey);
     }
 
     public sObject createAccount(Map<String, Object> fieldVals, Boolean doDml) {
         Integer i = getNext('Account');
+        fieldVals.put('i', i);
         Account a = new Account(Name = 'Test Account ' + i);
         return finish(a, fieldVals, doDml);
     }
@@ -31,6 +28,7 @@ public with sharing class TDF_SalesObjects extends TDF.Provider {
         Boolean doDml
     ) {
         Integer i = getNext('Opportunity');
+        fieldVals.put('i', i);
         Opportunity o = new Opportunity(
             Name = 'Test Opp ' + i,
             StageName = 'Prospecting',
